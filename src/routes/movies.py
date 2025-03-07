@@ -19,15 +19,24 @@ async def get_movie(movie_id: int, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/movies/", response_model=MovieListResponseSchema)
-async def get_movies(
+async def list_movies(
         page: int = Query(1, ge=1),
         per_page: int = Query(10, ge=1, le=20),
-        db: AsyncSession = Depends(get_db)
+        db: AsyncSession = Depends(get_db),
 ):
+    total_items = await db.scalar(select(func.count(MovieModel.id)))
+    if total_items == 0:
+        raise HTTPException(status_code=404, detail="No movies found.")
+
+    total_pages = (total_items + per_page - 1) // per_page
     offset = (page - 1) * per_page
-    movies = db.query(MovieModel).offset(offset).limit(per_page).all()
-    total_items = db.query(MovieModel).count()
-    total_pages = (total_items // per_page - 1) // per_page
+    if page > total_pages:
+        raise HTTPException(status_code=404, detail="No movies found.")
+
+    result = (
+        await db.execute(select(MovieModel).offset(offset).limit(per_page))
+    )
+    movies = result.scalars().all()
 
     if not movies:
         raise HTTPException(status_code=404, detail="No movies found.")
@@ -42,6 +51,3 @@ async def get_movies(
         "total_pages": total_pages,
         "total": total_items,
     }
-
-
-
